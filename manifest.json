@@ -1,0 +1,12 @@
+{
+    "display_name": "Group Reply Guard",
+    "loading_order": 12,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "GitHub Copilot",
+    "version": "0.1.0",
+    "auto_update": true,
+    "homePage": "https://github.com/kentarofujiy/SillyTavern-Group-Reply-Guard"
+}
