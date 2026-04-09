@@ -1,0 +1,75 @@
+<div id="group_reply_guard_settings_root" class="group-reply-guard-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Group Reply Guard</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <label class="checkbox_label" for="group_reply_guard_enabled">
+                <input id="group_reply_guard_enabled" type="checkbox" />
+                <span>Enable group reply guarding</span>
+            </label>
+            <label class="checkbox_label" for="group_reply_guard_auto_rewrite">
+                <input id="group_reply_guard_auto_rewrite" type="checkbox" />
+                <span>Run a second LLM pass for tone and context repair</span>
+            </label>
+            <label class="checkbox_label" for="group_reply_guard_auto_analysis">
+                <input id="group_reply_guard_auto_analysis" type="checkbox" />
+                <span>Run LLM attribution analysis on ambiguous group replies</span>
+            </label>
+            <label class="checkbox_label" for="group_reply_guard_rewrite_all">
+                <input id="group_reply_guard_rewrite_all" type="checkbox" />
+                <span>Rewrite every guarded reply, not only flagged ones</span>
+            </label>
+            <label class="checkbox_label" for="group_reply_guard_manual_actions">
+                <input id="group_reply_guard_manual_actions" type="checkbox" />
+                <span>Show manual Analyze or Re-analyze actions on character messages</span>
+            </label>
+            <label class="checkbox_label" for="group_reply_guard_manual_mutation">
+                <input id="group_reply_guard_manual_mutation" type="checkbox" />
+                <span>Let manual analysis update the message instead of previewing only</span>
+            </label>
+            <label class="checkbox_label" for="group_reply_guard_debug">
+                <input id="group_reply_guard_debug" type="checkbox" />
+                <span>Keep detailed diagnostics</span>
+            </label>
+
+            <label for="group_reply_guard_context_window">Recent messages to include in rewrite context</label>
+            <input id="group_reply_guard_context_window" class="text_pole" type="number" min="2" max="20" step="1" />
+
+            <label for="group_reply_guard_analysis_length">Analysis response length</label>
+            <input id="group_reply_guard_analysis_length" class="text_pole" type="number" min="64" max="600" step="8" />
+
+            <label for="group_reply_guard_response_length">Rewrite response length</label>
+            <input id="group_reply_guard_response_length" class="text_pole" type="number" min="32" max="600" step="8" />
+
+            <label for="group_reply_guard_reroute_policy">Reroute policy for leaked segments</label>
+            <select id="group_reply_guard_reroute_policy" class="text_pole">
+                <option value="disabled">Detect only, never re-send</option>
+                <option value="manual-only">Re-send only after manual analysis</option>
+                <option value="always">Always re-send with /sendas</option>
+            </select>
+
+            <label for="group_reply_guard_user_aliases">Extra user aliases</label>
+            <textarea id="group_reply_guard_user_aliases" class="text_pole textarea_compact" rows="2" placeholder="Comma or newline separated aliases"></textarea>
+
+            <label for="group_reply_guard_analysis_prompt">Analysis system prompt</label>
+            <textarea id="group_reply_guard_analysis_prompt" class="text_pole textarea_compact" rows="7"></textarea>
+
+            <label for="group_reply_guard_rewrite_prompt">Rewrite system prompt</label>
+            <textarea id="group_reply_guard_rewrite_prompt" class="text_pole textarea_compact" rows="8"></textarea>
+
+            <div class="group-reply-guard-status-block">
+                <strong>Status</strong>
+                <div id="group_reply_guard_status" class="group-reply-guard-status">Idle</div>
+                <div id="group_reply_guard_expected_speaker" class="group-reply-guard-expected">No drafted speaker</div>
+            </div>
+
+            <div class="group-reply-guard-diagnostics-head">
+                <strong>Recent actions</strong>
+                <small>Newest first</small>
+            </div>
+            <div id="group_reply_guard_diagnostics" class="group-reply-guard-diagnostics"></div>
+        </div>
+    </div>
+</div>
