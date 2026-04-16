@@ -7,6 +7,5 @@
     "css": "style.css",
     "author": "GitHub Copilot",
     "version": "0.1.0",
-    "auto_update": true,
-    "homePage": "https://github.com/kentarofujiy/SillyTavern-Group-Reply-Guard"
+    "homePage": "https://github.com/SillyTavern/SillyTavern"
 }

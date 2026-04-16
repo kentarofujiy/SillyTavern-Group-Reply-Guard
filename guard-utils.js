@@ -24,13 +24,39 @@ export const META_RESPONSE_MARKERS = [
 
 export const ATTRIBUTION_REFERENCE_MARKERS = [
     /\b(?:you|your)\b/i,
-    /\b(?:he|she|they)\s+said\b/i,
-    /\b(?:turning|looking|glancing|speaking)\s+to\b/i,
-    /["“”].+["“”]/,
+    /\b(?:he|she|they)\s+(?:said|asked|replied|responded)\b/i,
+    /\b(?:turning|looking|glancing|speaking|talking)\s+to\b/i,
+    /\b(?:addressing|replying|responding)\s+to\b/i,
+];
+
+const OTHER_CHARACTER_REFERENCE_PATTERNS = [
+    name => new RegExp(`\\b(?:to|toward|towards|at|with|for|about|around|near|beside|before|after)\\s+${escapeRegExp(name)}\\b`, 'i'),
+    name => new RegExp(`\\b${escapeRegExp(name)}\\b\\s*,`, 'i'),
+    name => new RegExp(`\\b${escapeRegExp(name)}\\b\\s+(?:said|says|asked|asks|replied|responded|answered|added|continued|called|shouted|whispered|murmured|laughed|laughs|smiled|smiles|grinned|grins|sighed|sighs|nodded|nods|waved|waves|gestured|gestures|stepped|steps|walked|walks|moved|moves|turned|turns|looked|looks|glanced|glances|spoke|speaks|talked|talks|answered|answers)\\b`, 'i'),
+    name => new RegExp(`\\b(?:said|says|asked|asks|replied|responded|answered|added|continued|told|tell|tells|called|shouted|whispered|murmured|laughed|laughs|smiled|smiles|grinned|grins|sighed|sighs|nodded|nods|waved|waves|gestured|gestures|turned|turns|looked|looks|glanced|glances|spoke|speaks|talked|talks|motioned|motions|beckoned|beckons)\\b[^\n.!?]{0,40}\\b${escapeRegExp(name)}\\b`, 'i'),
 ];
 
 function uniqueStrings(values) {
     return Array.from(new Set(values.filter(Boolean).map(value => String(value).trim()).filter(Boolean)));
+}
+
+function stripQuotedDialogue(text) {
+    return String(text ?? '').replace(/["“][^"“”\n]*["”]/g, ' ');
+}
+
+function buildReferenceMatchers(names) {
+    return uniqueStrings(names)
+        .sort((left, right) => right.length - left.length)
+        .map(name => ({
+            name,
+            patterns: OTHER_CHARACTER_REFERENCE_PATTERNS.map(createPattern => createPattern(name)),
+        }));
+}
+
+function lineHasReferenceCue(line, matchers) {
+    const unquotedLine = stripQuotedDialogue(line);
+
+    return matchers.some(({ patterns }) => patterns.some(pattern => pattern.test(unquotedLine)));
 }
 
 export function escapeRegExp(value) {
@@ -174,7 +200,7 @@ export function detectAttributionSignals({ text, expectedName, userNames = [], o
     const otherList = uniqueStrings(otherNames);
     const allNames = uniqueStrings([expectedName, ...userList, ...otherList]);
     const userMatchers = userList.map(name => ({ name, pattern: new RegExp(`\\b${escapeRegExp(name)}\\b`, 'i') }));
-    const otherMatchers = otherList.map(name => ({ name, pattern: new RegExp(`\\b${escapeRegExp(name)}\\b`, 'i') }));
+    const otherMatchers = buildReferenceMatchers(otherList);
 
     let foundReference = false;
 
@@ -190,7 +216,7 @@ export function detectAttributionSignals({ text, expectedName, userNames = [], o
         }
 
         const hasUserReference = userMatchers.some(({ pattern }) => pattern.test(trimmed));
-        const hasOtherReference = otherMatchers.some(({ pattern }) => pattern.test(trimmed));
+        const hasOtherReference = lineHasReferenceCue(trimmed, otherMatchers);
 
         if (hasUserReference) {
             issues.push('ambiguous_user_reference');
@@ -210,6 +236,34 @@ export function detectAttributionSignals({ text, expectedName, userNames = [], o
     }
 
     return uniqueStrings(issues);
+}
+
+export function hasSpeakerReferenceEvidence({ text, speakerName, allNames = [] }) {
+    const normalized = normalizeReplyText(text);
+    if (!normalized || !speakerName) {
+        return false;
+    }
+
+    const names = uniqueStrings([speakerName, ...allNames]);
+    const speakerMatchers = buildReferenceMatchers([speakerName]);
+
+    for (const line of normalized.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+            continue;
+        }
+
+        const explicitSpeaker = detectExplicitSpeaker(trimmed, names);
+        if (explicitSpeaker && explicitSpeaker.toLowerCase() === String(speakerName).toLowerCase()) {
+            return true;
+        }
+
+        if (lineHasReferenceCue(trimmed, speakerMatchers)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 export function sanitizeGeneratedReply({ text, expectedName, userNames = [], otherNames = [] }) {

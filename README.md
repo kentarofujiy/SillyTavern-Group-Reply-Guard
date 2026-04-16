@@ -1,30 +1,5 @@
 # Group Reply Guard
 
-This directory is structured to be the root of a standalone third-party SillyTavern extension repository.
-
-## Install
-
-1. Put these files at the root of a Git repository.
-2. Publish that repository to GitHub or another git host reachable by your SillyTavern server.
-3. In SillyTavern, open the third-party extension installer and paste the repository URL.
-
-The installer clones the repository and expects `manifest.json` to be present at the repository root. The paths declared in `manifest.json` are resolved relative to that root.
-
-## Package Contents
-
-- `manifest.json`: required by the installer and loader
-- `index.js`: main extension entry point
-- `guard-utils.js`: pure helper logic
-- `event-contract.js`: custom event contract helpers
-- `settings.html`: settings panel template
-- `style.css`: extension styles
-- `LICENSE`: included for distribution hygiene; not required by the loader
-
-## Before Publishing
-
-1. Update the `author` field in `manifest.json` if needed.
-2. Tag releases in git if you want update flows to be easier to track.
-
 This extension post-processes character replies in SillyTavern group chats to keep a generated message aligned with the character who was actually drafted to speak.
 
 Its main job is to catch two common failure modes:
@@ -200,6 +175,8 @@ If you want to add cheap, reliable detection, this is the safest place to do it.
 
 Those signals do not directly rewrite the message. They are used to decide whether the extension should escalate to the LLM analysis pass.
 
+Important routing rule: a bare mention of another participant's name is not enough to reroute text. The extension now requires stronger evidence such as an explicit speaker label or a clear prose cue that the other participant owns that segment.
+
 ### 4. Optional LLM analysis
 
 If `shouldAnalyzeWithLlm(...)` returns true, the extension calls `analyzeReplyWithLlm(...)`.
@@ -232,6 +209,8 @@ Normalized LLM analysis output must look like:
 The result is sanitized again through `sanitizeGeneratedReply(...)` before being trusted.
 
 That second sanitization is deliberate. It treats model output as untrusted text.
+
+Model-produced reroutes are also filtered against the original message. If the only evidence is a quoted or narrative mention of another participant by name, the reroute is rejected and the text stays with the expected speaker.
 
 ### 5. Optional rewrite pass
 

@@ -3,7 +3,7 @@ import { eventSource, event_types, saveSettingsDebounced } from '../../../../scr
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
 
 import { createPostGuardEventPayload, GROUP_REPLY_GUARD_POST_GUARD_EVENT } from './event-contract.js';
-import { detectAttributionSignals, detectQualityIssues, normalizeReplyText, sanitizeGeneratedReply, truncateText } from './guard-utils.js';
+import { detectAttributionSignals, detectQualityIssues, hasSpeakerReferenceEvidence, normalizeReplyText, sanitizeGeneratedReply, truncateText } from './guard-utils.js';
 
 const MODULE_NAME = 'group-reply-guard';
 const TEMPLATE_MODULE = 'third-party/group-reply-guard';
@@ -32,6 +32,8 @@ const DEFAULT_ANALYSIS_SYSTEM_PROMPT = [
     'Identify whether the candidate reply contains narration, dialogue, or actions that belong to speakers other than the expected character.',
     'If repair is needed, cleanText must contain only the final text that should remain on the expected character message.',
     'If a segment clearly belongs to another participant, place it in reroutedSegments with the correct speaker name and text.',
+    'Do not reroute a segment merely because another participant is mentioned by name inside the expected speaker\'s dialogue or narration.',
+    'Quoted content like "Sofia is dressing like a disco angel" stays with the expected speaker unless the text explicitly attributes that quote or action to Sofia.',
     'Never write analysis prose outside the JSON object.',
 ].join(' ');
 
@@ -547,6 +549,16 @@ function mergeReroutedSegments(leftSegments, rightSegments) {
     return merged.filter(segment => segment.text);
 }
 
+function filterUnsupportedReroutedSegments(originalText, reroutedSegments, expectedName, userNames, otherNames) {
+    const allNames = [expectedName, ...userNames, ...otherNames];
+
+    return normalizeReroutedSegments(reroutedSegments).filter(segment => hasSpeakerReferenceEvidence({
+        text: originalText,
+        speakerName: segment.speaker,
+        allNames,
+    }));
+}
+
 async function rewriteReply(context, expectedCharacter, candidateText, analysis, messageId) {
     const settings = getSettings();
     const profile = runtimeState.participantProfiles.get(expectedCharacter.name) ?? buildCharacterProfile(context, runtimeState.expectedCharacterId);
@@ -618,6 +630,10 @@ async function analyzeReplyWithLlm(context, expectedCharacter, candidateText, ba
         `Deterministic issues: ${baseAnalysis.issues.length ? baseAnalysis.issues.join(', ') : 'none'}`,
         `Recent conversation:\n${getRecentContext(context, messageId) || 'None available.'}`,
         `Participants summary:\n${buildParticipantsSummary(expectedCharacter.name)}`,
+        'Reroute rules:',
+        `- Keep text on ${expectedCharacter.name} when it only mentions another participant by name.`,
+        `- Example to keep: ${expectedCharacter.name} says, "Sofia is dressing like a disco angel." That is still ${expectedCharacter.name}'s message.`,
+        '- Only reroute when another participant is explicitly labeled as the speaker or is clearly the actor of a separate segment.',
         `Candidate reply:\n<reply>\n${candidateText}\n</reply>`,
         'Return a JSON object with these fields only:',
         '- cleanText: the text that should remain on the expected character message',
@@ -815,15 +831,38 @@ async function processMessage(messageId, {
                 userNames,
                 otherNames,
             });
+            const llmReroutedSegments = mergeReroutedSegments(llmAnalysis.reroutedSegments, llmSanitized.reroutedSegments);
+            const supportedLlmReroutes = filterUnsupportedReroutedSegments(
+                originalText,
+                llmReroutedSegments,
+                expectedCharacter.name,
+                userNames,
+                otherNames,
+            );
+            const rejectedLlmReroute = llmReroutedSegments.length !== supportedLlmReroutes.length;
 
             llmAnalysisUsed = true;
-            finalText = llmSanitized.cleanText || llmAnalysis.cleanText || finalText;
-            analysis = {
-                cleanText: finalText,
-                issues: uniqueIssues([...analysis.issues, ...llmAnalysis.issues, ...llmSanitized.issues, ...(llmAnalysis.rewriteNeeded ? ['llm_rewrite_recommended'] : [])]),
-                reroutedSegments: mergeReroutedSegments(analysis.reroutedSegments, mergeReroutedSegments(llmAnalysis.reroutedSegments, llmSanitized.reroutedSegments)),
-                modified: analysis.modified || llmSanitized.modified || finalText !== originalText,
-            };
+            if (rejectedLlmReroute) {
+                analysis = {
+                    cleanText: finalText,
+                    issues: uniqueIssues([
+                        ...analysis.issues,
+                        ...llmAnalysis.issues,
+                        ...(llmAnalysis.rewriteNeeded ? ['llm_rewrite_recommended'] : []),
+                        'llm_reroute_rejected',
+                    ]),
+                    reroutedSegments: analysis.reroutedSegments,
+                    modified: analysis.modified,
+                };
+            } else {
+                finalText = llmSanitized.cleanText || llmAnalysis.cleanText || finalText;
+                analysis = {
+                    cleanText: finalText,
+                    issues: uniqueIssues([...analysis.issues, ...llmAnalysis.issues, ...llmSanitized.issues, ...(llmAnalysis.rewriteNeeded ? ['llm_rewrite_recommended'] : [])]),
+                    reroutedSegments: mergeReroutedSegments(analysis.reroutedSegments, supportedLlmReroutes),
+                    modified: analysis.modified || llmSanitized.modified || finalText !== originalText,
+                };
+            }
         } catch (error) {
             console.warn('[Group Reply Guard] LLM analysis failed', error);
             analysis.issues = uniqueIssues([...analysis.issues, 'llm_analysis_failed']);
