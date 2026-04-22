@@ -91,6 +91,19 @@ function restoreSpecialBlocks(text, blocks = []) {
     return restored;
 }
 
+export function protectReasoningBlocks(text) {
+    return protectSpecialBlocks(text);
+}
+
+export function restoreReasoningBlocks(text, blocks = []) {
+    return restoreSpecialBlocks(text, blocks);
+}
+
+export function hasAllProtectedBlocks(text, blocks = []) {
+    const source = String(text ?? '');
+    return blocks.every(block => source.includes(block.placeholder));
+}
+
 function stripQuotedDialogue(text) {
     const { protectedText, blocks } = protectSpecialBlocks(text);
     const stripped = protectedText.replace(/["“][^"“”\n]*["”]/g, ' ');

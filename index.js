@@ -3,7 +3,17 @@ import { eventSource, event_types, saveSettingsDebounced } from '../../../../scr
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
 
 import { createPostGuardEventPayload, GROUP_REPLY_GUARD_POST_GUARD_EVENT } from './event-contract.js';
-import { detectAttributionSignals, detectQualityIssues, hasSpeakerReferenceEvidence, normalizeReplyText, sanitizeGeneratedReply, truncateText } from './guard-utils.js';
+import {
+    detectAttributionSignals,
+    detectQualityIssues,
+    hasAllProtectedBlocks,
+    hasSpeakerReferenceEvidence,
+    normalizeReplyText,
+    protectReasoningBlocks,
+    restoreReasoningBlocks,
+    sanitizeGeneratedReply,
+    truncateText,
+} from './guard-utils.js';
 
 const MODULE_NAME = 'group-reply-guard';
 const TEMPLATE_MODULE = 'third-party/group-reply-guard';
@@ -874,9 +884,23 @@ async function processMessage(messageId, {
     if (shouldRewriteReply(analysis)) {
         try {
             setStatus(`Rewriting ${expectedCharacter.name}`);
-            const rewriteResult = await rewriteReply(context, expectedCharacter, finalText || originalText, analysis, messageId);
+            const rewriteCandidate = finalText || originalText;
+            const protectedRewriteCandidate = protectReasoningBlocks(rewriteCandidate);
+            const rewriteResult = await rewriteReply(
+                context,
+                expectedCharacter,
+                protectedRewriteCandidate.protectedText,
+                analysis,
+                messageId,
+            );
             if (rewriteResult.text) {
-                const rewritten = rewriteResult.text;
+                const rewrittenWithPlaceholders = normalizeReplyText(rewriteResult.text);
+                const rewriteDroppedProtectedBlock = protectedRewriteCandidate.blocks.length > 0
+                    && !hasAllProtectedBlocks(rewrittenWithPlaceholders, protectedRewriteCandidate.blocks);
+                const rewritten = restoreReasoningBlocks(
+                    rewriteDroppedProtectedBlock ? protectedRewriteCandidate.protectedText : rewrittenWithPlaceholders,
+                    protectedRewriteCandidate.blocks,
+                );
                 rewriteApplied = rewritten !== finalText;
                 const rewrittenAnalysis = sanitizeGeneratedReply({
                     text: rewritten,
@@ -887,7 +911,13 @@ async function processMessage(messageId, {
                 finalText = rewrittenAnalysis.cleanText || finalText;
                 analysis = {
                     cleanText: finalText,
-                    issues: uniqueIssues([...analysis.issues, ...rewriteResult.issues, ...rewrittenAnalysis.issues, ...(rewriteApplied ? ['rewritten'] : [])]),
+                    issues: uniqueIssues([
+                        ...analysis.issues,
+                        ...rewriteResult.issues,
+                        ...rewrittenAnalysis.issues,
+                        ...(rewriteApplied ? ['rewritten'] : []),
+                        ...(rewriteDroppedProtectedBlock ? ['rewrite_dropped_reasoning_block'] : []),
+                    ]),
                     reroutedSegments: mergeReroutedSegments(analysis.reroutedSegments, rewrittenAnalysis.reroutedSegments),
                     modified: analysis.modified || rewrittenAnalysis.modified || rewriteApplied,
                 };

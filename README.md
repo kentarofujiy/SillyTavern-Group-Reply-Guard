@@ -242,6 +242,15 @@ Triggers for rewrite are controlled by `REWRITE_TRIGGER_ISSUES`:
 
 If the model answers with analysis or meta commentary instead of the reply, the extension retries once with a stricter follow-up instruction.
 
+Reasoning-block preservation rule:
+
+- Literal `<think>...</think>` blocks are treated as protected blocks.
+- Before the rewrite model call, protected blocks are replaced with internal placeholders so the model cannot rewrite their contents.
+- After generation, placeholders are restored back to the original block contents before final sanitization.
+- If a rewrite response drops one or more protected placeholders, the extension falls back to the protected pre-rewrite text and records `rewrite_dropped_reasoning_block` in issues.
+
+This makes `<think>` preservation an end-to-end guarantee in the rewrite path, not only in deterministic cleanup.
+
 ### 6. Mutation, metadata, and deferred finalization
 
 After all passes:
@@ -377,6 +386,9 @@ Key helpers:
 - `detectQualityIssues(text)`: flags repetition, meta responses, and omniscient narration
 - `detectAttributionSignals({ ... })`: flags ambiguous references that may require LLM analysis
 - `sanitizeGeneratedReply({ ... })`: main deterministic cleanup pass
+- `protectReasoningBlocks(text)`: replaces protected blocks with internal placeholders
+- `restoreReasoningBlocks(text, blocks)`: restores protected blocks after processing
+- `hasAllProtectedBlocks(text, blocks)`: verifies that all placeholders survived intermediate transformations
 
 Constants worth understanding:
 
